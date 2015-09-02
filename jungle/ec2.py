@@ -9,10 +9,11 @@ import click
 
 def get_tag_value(x, key):
     """Get a value from tag"""
-    result = [y['Value'] for y in x if y['Key'] == key]
-    if len(result) == 0:
-        return None
-    return result[0]
+    if x is not None:
+        result = [y['Value'] for y in x if y['Key'] == key]
+        if len(result) == 0:
+            return None
+        return result[0]
 
 
 @click.group()
