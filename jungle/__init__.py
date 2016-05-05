@@ -1,4 +1,4 @@
 # -*- coding: utf-8 -*-
 """jungle module"""
 
-__version__ = '0.4.8'
+__version__ = '0.5.1'

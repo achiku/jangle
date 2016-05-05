@@ -88,6 +88,25 @@ SSH login to instance specified by Tag Name through gateway instance
 jungle ec2 ssh -n blog-web-server-01 --key-file /path/to/key.pem -g i-xxxxxx
 ```
 
+SSH login to instance specified by Tag Name using auto ssh key discovery
+
+```
+jungle ec2 ssh -n blog-web-server-01
+```
+
+#### Auto ssh key discovery
+
+If you don't specify a key-file with -k or --key-file, jungle will read the
+key file name off of the instance and then attempt to find a local key with
+the same name in `~/.ssh/``
+
+Example:
+ec2 instance reports a key name of FooBar, jungle will look for a key name of
+`~/.ssh/FooBar.pem`
+
+The search path for keys defaults to `~/.ssh/` but can be overridden with
+`--key-dir'
+
 
 ### ELB
 

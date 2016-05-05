@@ -87,7 +87,7 @@ def down(instance_id):
         sys.exit(2)
 
 
-def create_ssh_command(instance_id, instance_name, username, key_file, port, gateway_instance_id):
+def create_ssh_command(instance_id, instance_name, username, key_file, key_dir, port, gateway_instance_id):
     """Create SSH Login command string"""
     ec2 = boto3.resource('ec2')
     if instance_id is not None:
@@ -105,8 +105,12 @@ def create_ssh_command(instance_id, instance_name, username, key_file, port, gat
             for idx, i in enumerate(instances):
                 target_instances.append(i)
                 tag_name = get_tag_value(i.tags, 'Name')
-                click.echo('[{0}]: {1}\t{2}\t{3}\t{4}'.format(
-                    idx, i.id, i.private_ip_address, i.state['Name'], tag_name))
+                click.echo('[{0}]: {1}\t{2}\t{3}\t{4}\t{5}'.format(
+                    idx, i.id, i.private_ip_address, i.state['Name'], tag_name, i.key_name))
+                # Some key_name munging is required here to make it an actual key_file
+                # if key_file isn't defined, use the one reported from the boto call
+                if key_file is None:
+                    key_file = "{0}/{1}.pem".format(key_dir, i.key_name)
             selected_idx = click.prompt("Please enter a valid number", type=int, default=0)
             # TODO: add validation for if selected_idx exceeds length of target_instances
             click.echo("{0} is selected.".format(selected_idx))
@@ -135,11 +139,12 @@ def create_ssh_command(instance_id, instance_name, username, key_file, port, gat
 @click.option('--instance-id', '-i', default=None, help='EC2 instance id')
 @click.option('--instance-name', '-n', default=None, help='EC2 instance Name Tag')
 @click.option('--username', '-u', default='ubuntu', help='Login username')
-@click.option('--key-file', '-k', required=True, help='SSH Key file path', type=click.Path())
+@click.option('--key-file', '-k', default=None, help='SSH Key file path', type=click.Path())
+@click.option('--key-dir', '-K', default='~/.ssh', help='Path to key files')
 @click.option('--port', '-p', help='SSH port', default=22)
 @click.option('--gateway-instance-id', '-g', default=None, help='Gateway instance id')
 @click.option('--dry-run', is_flag=True, default=False, help='Print SSH Login command and exist')
-def ssh(instance_id, instance_name, username, key_file, port, gateway_instance_id, dry_run):
+def ssh(instance_id, instance_name, username, key_file, key_dir, port, gateway_instance_id, dry_run):
     """SSH to EC2 instance"""
     if instance_id is None and instance_name is None:
         click.echo(
@@ -152,7 +157,7 @@ def ssh(instance_id, instance_name, username, key_file, port, gateway_instance_i
             "can't to be specified at the same time.", err=True)
         sys.exit(2)
     cmd = create_ssh_command(
-        instance_id, instance_name, username, key_file, port, gateway_instance_id)
+        instance_id, instance_name, username, key_file, key_dir, port, gateway_instance_id)
     if not dry_run:
         subprocess.call(cmd, shell=True)
     else:
