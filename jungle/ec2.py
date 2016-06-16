@@ -6,6 +6,8 @@ import boto3
 import botocore
 import click
 
+reload(sys)
+sys.setdefaultencoding("utf-8")
 
 def format_output(instances, flag):
     """return formatted string for instance"""
