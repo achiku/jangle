@@ -40,6 +40,16 @@ def _get_max_name_len(instances):
     return 0
 
 
+def _parse_tags(tags):
+    tags_dict = {}
+    tags_list = tags.split(',')
+    for tag in tags_list:
+        tag_key, tag_value = tag.strip().split(':')
+        tags_dict[tag_key] = tag_value
+
+    return tags_dict
+
+
 def get_tag_value(x, key):
     """Get a value from tag"""
     if x is None:
@@ -103,7 +113,7 @@ def down(instance_id, profile_name):
         sys.exit(2)
 
 
-def create_ssh_command(session, instance_id, instance_name, username, key_file, port, ssh_options,
+def create_ssh_command(session, instance_id, instance_tags, username, key_file, port, ssh_options,
                        use_private_ip, gateway_instance_id, gateway_username):
     """Create SSH Login command string"""
     ec2 = session.resource('ec2')
@@ -114,15 +124,16 @@ def create_ssh_command(session, instance_id, instance_name, username, key_file, 
         except botocore.exceptions.ClientError as e:
             click.echo("Invalid instance ID {0} ({1})".format(instance_id, e), err=True)
             sys.exit(2)
-    elif instance_name is not None:
+    elif instance_tags is not None:
         try:
             conditions = [
-                {'Name': 'tag:Name', 'Values': [instance_name]},
                 {'Name': 'instance-state-name', 'Values': ['running']},
             ]
+            for key, value in instance_tags.items():
+                conditions.append({'Name': 'tag:{0}'.format(key), 'Values': [value]})
             instances = ec2.instances.filter(Filters=conditions)
             target_instances = []
-            for idx, i in enumerate(instances):
+            for idx, i in enumerate(sorted(instances, key=lambda instance: get_tag_value(instance.tags, 'Name'))):
                 target_instances.append(i)
             if len(target_instances) == 1:
                 instance = target_instances[0]
@@ -142,6 +153,7 @@ def create_ssh_command(session, instance_id, instance_name, username, key_file, 
         except botocore.exceptions.ClientError as e:
             click.echo("Invalid instance ID {0} ({1})".format(instance_id, e), err=True)
             sys.exit(2)
+
     # TODO: need to refactor and make it testable
     if key_file is None:
         key_file_option = ''
@@ -176,6 +188,8 @@ def build_option_username(username):
 @cli.command(help='SSH login to EC2 instance')
 @click.option('--instance-id', '-i', default=None, help='EC2 instance id')
 @click.option('--instance-name', '-n', default=None, help='EC2 instance Name Tag')
+@click.option('--instance-tags', '-t', default=None,
+              help='EC2 instance Tags\nFormat: \n\n tag_name:tag_value[,tag_name:tag_value...]')
 @click.option('--username', '-u', default=None, help='Login username')
 @click.option('--key-file', '-k', help='SSH Key file path', type=click.Path())
 @click.option('--port', '-p', help='SSH port', default=22)
@@ -185,24 +199,30 @@ def build_option_username(username):
 @click.option('--gateway-username', '-x', default=None, help='Gateway username')
 @click.option('--dry-run', is_flag=True, default=False, help='Print SSH Login command and exist')
 @click.option('--profile-name', '-P')
-def ssh(instance_id, instance_name, username, key_file, port, ssh_options, private_ip,
+def ssh(instance_id, instance_name, instance_tags, username, key_file, port, ssh_options, private_ip,
         gateway_instance_id, gateway_username, dry_run, profile_name):
     """SSH to EC2 instance"""
     session = create_session(profile_name)
-
-    if instance_id is None and instance_name is None:
+    filters = (instance_id, instance_name, instance_tags).count(None)
+    if filters == 3:
         click.echo(
-            "One of --instance-id/-i or --instance-name/-n"
+            "One of --instance-id/-i or --instance-name/-n or --instance-tags/-t"
             " has to be specified.", err=True)
         sys.exit(1)
-    elif instance_id is not None and instance_name is not None:
+    elif filters < 2:
         click.echo(
-            "Both --instance-id/-i and --instance-name/-n "
-            "can't to be specified at the same time.", err=True)
+            "Only one of --instance-id/-i or --instance-name/-n or --instance-tags/-t "
+            "can be specified at the same time.", err=True)
         sys.exit(1)
+    if instance_name is not None:
+        instance_tags_dict = {'Name': instance_name}
+    elif instance_tags is not None:
+        instance_tags_dict = _parse_tags(instance_tags)
+    else:
+        instance_tags_dict = None
     cmd = create_ssh_command(
         session,
-        instance_id, instance_name, username, key_file, port, ssh_options, private_ip,
+        instance_id, instance_tags_dict, username, key_file, port, ssh_options, private_ip,
         gateway_instance_id, gateway_username)
     if not dry_run:
         subprocess.call(cmd, shell=True)

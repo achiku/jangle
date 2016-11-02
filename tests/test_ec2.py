@@ -36,6 +36,18 @@ def _get_sorted_server_names_from_output(output, separator='\t'):
     return sorted(server_names)
 
 
+def test_parse_tags():
+    from jungle.ec2 import _parse_tags
+
+    tag_list = 'Name:ec2instance ,role:webserver, cluster:webserver-cluster'
+    expected_tags = {'Name': 'ec2instance',
+                     'role': 'webserver',
+                     'cluster': 'webserver-cluster'}
+    tags = _parse_tags(tag_list)
+
+    assert tags == expected_tags
+
+
 def test_get_instance_ip_address(runner, ec2):
     from jungle.ec2 import _get_instance_ip_address
 
@@ -105,10 +117,20 @@ def test_ec2_ls_formatted(runner, ec2, opt, arg, expected_server_names):
 @pytest.mark.parametrize('args, expected_output, exit_code', [
     (
         ['-u', 'ubuntu'],
-        "One of --instance-id/-i or --instance-name/-n has to be specified.\n", 1),
+        "One of --instance-id/-i or --instance-name/-n or --instance-tags/-t"
+        " has to be specified.\n", 1),
     (
         ['-i', 'xxx', '-n', 'xxx'],
-        "Both --instance-id/-i and --instance-name/-n can't to be specified at the same time.\n", 1),
+        "Only one of --instance-id/-i or --instance-name/-n or --instance-tags/-t "
+        "can be specified at the same time.\n", 1),
+    (
+        ['-i', 'xxx', '-t', 'xxx'],
+        "Only one of --instance-id/-i or --instance-name/-n or --instance-tags/-t "
+        "can be specified at the same time.\n", 1),
+    (
+        ['-n', 'xxx', '-t', 'xxx'],
+        "Only one of --instance-id/-i or --instance-name/-n or --instance-tags/-t "
+        "can be specified at the same time.\n", 1)
 ])
 def test_ec2_ssh_arg_error(runner, ec2, args, expected_output, exit_code):
     """jungle ec2 ssh test"""
@@ -226,31 +248,30 @@ def test_get_tag_value(tags, key, expected):
     assert get_tag_value(tags, key) == expected
 
 
-@pytest.mark.parametrize('inst_name, use_inst_id, username, keyfile, port, ssh_options, use_private_ip, '
+@pytest.mark.parametrize('instance_tags, use_inst_id, username, keyfile, port, ssh_options, use_private_ip, '
                          'use_gateway, gateway_username, profile_name, expected', [
-                             ('ssh_server', False, 'ubuntu', 'key.pem', 22, "-o StrictHostKeyChecking=no", False, False,
-                              None, None, 'ssh -l ubuntu {} -i key.pem -p 22 -o StrictHostKeyChecking=no'),
-                             ('ssh_server', False, 'ubuntu', None, 22, None, False, False, None, None,
+                             ({'Name': 'ssh_server'}, False, 'ubuntu', 'key.pem', 22, "-o StrictHostKeyChecking=no",
+                              False, False, None, None,
+                              'ssh -l ubuntu {} -i key.pem -p 22 -o StrictHostKeyChecking=no'),
+                             ({'Name': 'ssh_server'}, False, 'ubuntu', None, 22, None, False, False, None, None,
                               'ssh -l ubuntu {} -p 22'),
-                             ('ssh_server', False, 'ubuntu', None, 22, None, True, False, None, None,
+                             ({'Name': 'ssh_server'}, False, 'ubuntu', None, 22, None, True, False, None, None,
                               'ssh -l ubuntu {} -p 22'),
                              (None, True, 'ubuntu', 'key.pem', 22, None, False, False, None, None,
                               'ssh -l ubuntu {} -i key.pem -p 22'),
-                             ('ssh_server', False, 'ubuntu', 'key.pem', 22, None, False, True, None, None,
+                             ({'Name': 'ssh_server'}, False, 'ubuntu', 'key.pem', 22, None, False, True, None, None,
                               'ssh -tt {} -i key.pem -p 22 ssh -l ubuntu {}'),
-                             ('ssh_server', False, 'ubuntu', None, 22, None, False, True, None, None,
+                             ({'Name': 'ssh_server'}, False, 'ubuntu', None, 22, None, False, True, None, None,
                               'ssh -tt {} -p 22 ssh -l ubuntu {}'),
                              (None, True, 'ubuntu', 'key.pem', 22, None, False, True, None, None,
                               'ssh -tt {} -i key.pem -p 22 ssh -l ubuntu {}'),
                              (None, True, 'ubuntu', None, 22, "-A", False, True, 'ec2-user', None,
                               'ssh -tt -l ec2-user {} -p 22 -A ssh -l ubuntu {}'),
-                             (None, True, 'ec2-user', None, 22, "-A", False, True, 'core', None,
+                             (None, True, 'ec2-user', None, 22, "-A", False, True, 'core', 'my_profile',
                               'ssh -tt -l core {} -p 22 -A ssh -l ec2-user {}'),
-                             (None, True, 'ec2-user', None, 22, "-A", False, True, 'core',
-                              'my_profile', 'ssh -tt -l core {} -p 22 -A ssh -l ec2-user {}'),
                          ])
 def test_create_ssh_command(
-        mocker, ec2, inst_name, use_inst_id, username, keyfile, port, ssh_options, use_private_ip,
+        mocker, ec2, instance_tags, use_inst_id, username, keyfile, port, ssh_options, use_private_ip,
         use_gateway, gateway_username, profile_name, expected):
     """create_ssh_command test"""
     from jungle.ec2 import create_ssh_command
@@ -262,7 +283,7 @@ def test_create_ssh_command(
         'gateway_target_server'].id if use_gateway else None
     ssh_command = create_ssh_command(
         create_session(profile_name),
-        ssh_server_instance_id, inst_name, username, keyfile, port, ssh_options, use_private_ip,
+        ssh_server_instance_id, instance_tags, username, keyfile, port, ssh_options, use_private_ip,
         gateway_server_instance_id, gateway_username)
     if use_gateway:
         expected_output = expected.format(
