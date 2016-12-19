@@ -6,6 +6,8 @@ import botocore
 import click
 from jungle.session import create_session
 
+reload(sys)
+sys.setdefaultencoding("utf-8")
 
 def format_output(instances, flag):
     """return formatted string for instance"""
